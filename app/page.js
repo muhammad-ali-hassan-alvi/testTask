@@ -1,101 +1,195 @@
-import Image from "next/image";
+"use client";
 
-export default function Home() {
+import React, { useState, useCallback } from "react";
+import ReactFlow, {
+  ReactFlowProvider,
+  Background,
+  Controls,
+  MiniMap,
+  useNodesState,
+  useEdgesState,
+  addEdge,
+} from "reactflow";
+import "reactflow/dist/style.css";
+import { useForm } from "react-hook-form";
+import { z } from "zod";
+import { zodResolver } from "@hookform/resolvers/zod";
+import "tailwindcss/tailwind.css";
+
+const nodeSchema = z.object({
+  type: z.enum(["user", "habit"], { required_error: "Type is required" }),
+  name: z
+    .string()
+    .min(3, "Name must be at least 3 characters")
+    .max(20, "Name must be at most 20 characters"),
+  username: z
+    .string()
+    .min(3, "Username must be at least 3 characters")
+    .max(50, "Username is too long")
+    .optional(),
+  habit: z.enum(["Reading", "Exercise", "Meditation"]).optional(),
+});
+
+const initialNodes = [
+  { id: "1", type: "default", position: { x: 150, y: 50 }, data: { label: "User Node: Alice" } },
+];
+
+const initialEdges = [];
+
+export default function App() {
+  const [nodes, setNodes, onNodesChange] = useNodesState(initialNodes);
+  const [edges, setEdges, onEdgesChange] = useEdgesState(initialEdges);
+  const [selectedNode, setSelectedNode] = useState(null);
+  const [isPanelOpen, setIsPanelOpen] = useState(false);
+
+  const {
+    register,
+    handleSubmit,
+    reset,
+    watch,
+    setValue,
+    formState: { errors },
+  } = useForm({
+    resolver: zodResolver(nodeSchema),
+  });
+
+  const onConnect = useCallback(
+    (connection) => setEdges((eds) => addEdge({ ...connection, animated: true, style: { stroke: "#4f46e5" } }, eds)),
+    [setEdges]
+  );
+
+  const saveNode = (data) => {
+    if (selectedNode) {
+      setNodes((nds) =>
+        nds.map((node) =>
+          node.id === selectedNode.id
+            ? {
+                ...node,
+                data: {
+                  ...node.data,
+                  label: `${data.type === "user" ? "User Node" : "Habit Node"}: ${data.name}${
+                    data.habit ? ` (${data.habit})` : ""
+                  }`,
+                },
+              }
+            : node
+        )
+      );
+    } else {
+      addNewNode(data);
+    }
+    reset();
+    setIsPanelOpen(false);
+    setSelectedNode(null);
+  };
+
+  const addNewNode = (data = { type: "user", name: "New Node" }) => {
+    const id = `${nodes.length + 1}`;
+    const newNode = {
+      id,
+      type: "default",
+      position: { x: Math.random() * 400, y: Math.random() * 400 },
+      data: {
+        label: `${data.type === "user" ? "User Node" : "Habit Node"}: ${data.name}${
+          data.habit ? ` (${data.habit})` : ""
+        }`,
+      },
+    };
+
+    setNodes((nds) => [...nds, newNode]);
+
+    if (nodes.length > 0) {
+      setEdges((eds) =>
+        addEdge(
+          {
+            id: `e${nodes[nodes.length - 1].id}-${id}`,
+            source: nodes[nodes.length - 1].id,
+            target: id,
+            style: { stroke: "#4f46e5" },
+          },
+          eds
+        )
+      );
+    }
+  };
+
+  const handleNodeClick = (event, node) => {
+    setSelectedNode(node);
+    setIsPanelOpen(true);
+
+    const [nodeType, nodeName] = node.data.label.split(": ");
+    const habit = nodeName.includes("(") ? nodeName.split("(")[1].replace(")", "") : "";
+
+    setValue("type", nodeType === "User Node" ? "user" : "habit");
+    setValue("name", nodeName.replace(` (${habit})`, ""));
+    setValue("habit", habit || "");
+  };
+
   return (
-    <div className="grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20 font-[family-name:var(--font-geist-sans)]">
-      <main className="flex flex-col gap-8 row-start-2 items-center sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={180}
-          height={38}
-          priority
-        />
-        <ol className="list-inside list-decimal text-sm text-center sm:text-left font-[family-name:var(--font-geist-mono)]">
-          <li className="mb-2">
-            Get started by editing{" "}
-            <code className="bg-black/[.05] dark:bg-white/[.06] px-1 py-0.5 rounded font-semibold">
-              app/page.js
-            </code>
-            .
-          </li>
-          <li>Save and see your changes instantly.</li>
-        </ol>
-
-        <div className="flex gap-4 items-center flex-col sm:flex-row">
-          <a
-            className="rounded-full border border-solid border-transparent transition-colors flex items-center justify-center bg-foreground text-background gap-2 hover:bg-[#383838] dark:hover:bg-[#ccc] text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
+    <ReactFlowProvider>
+      <div className="flex h-screen">
+        <div className="flex-1 border-r border-gray-300">
+          <ReactFlow
+            nodes={nodes}
+            edges={edges}
+            onNodesChange={onNodesChange}
+            onEdgesChange={onEdgesChange}
+            onConnect={onConnect}
+            onNodeClick={handleNodeClick}
+            fitView
           >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={20}
-              height={20}
-            />
-            Deploy now
-          </a>
-          <a
-            className="rounded-full border border-solid border-black/[.08] dark:border-white/[.145] transition-colors flex items-center justify-center hover:bg-[#f2f2f2] dark:hover:bg-[#1a1a1a] hover:border-transparent text-sm sm:text-base h-10 sm:h-12 px-4 sm:px-5 sm:min-w-44"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Read our docs
-          </a>
+            <Background color="#e5e7eb" />
+            <Controls />
+            <MiniMap nodeColor={() => "#4f46e5"} />
+          </ReactFlow>
         </div>
-      </main>
-      <footer className="row-start-3 flex gap-6 flex-wrap items-center justify-center">
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/file.svg"
-            alt="File icon"
-            width={16}
-            height={16}
-          />
-          Learn
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/window.svg"
-            alt="Window icon"
-            width={16}
-            height={16}
-          />
-          Examples
-        </a>
-        <a
-          className="flex items-center gap-2 hover:underline hover:underline-offset-4"
-          href="https://nextjs.org?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-          target="_blank"
-          rel="noopener noreferrer"
-        >
-          <Image
-            aria-hidden
-            src="/globe.svg"
-            alt="Globe icon"
-            width={16}
-            height={16}
-          />
-          Go to nextjs.org →
-        </a>
-      </footer>
-    </div>
+
+        <div className="w-80 p-6 bg-gray-100">
+          <h3 className="text-xl text-black font-semibold mb-4">
+            {selectedNode ? "Edit Node" : "Add New Node"}
+          </h3>
+          <form onSubmit={handleSubmit(saveNode)} className="space-y-4">
+            <div>
+              <label className="block text-sm text-black font-medium ">Type</label>
+              <select {...register("type")} className="w-full p-2 border rounded-md text-black">
+                <option value="user">User Node</option>
+                <option value="habit">Habit Node</option>
+              </select>
+              {errors.type && <p className="text-red-600 text-sm">{errors.type.message}</p>}
+            </div>
+            <div>
+              <label className="block text-sm font-medium text-gray-700">Node Name</label>
+              <input type="text" {...register("name")} className="w-full p-2 border rounded-md text-black" />
+              {errors.name && <p className="text-red-600 text-sm">{errors.name.message}</p>}
+            </div>
+            {watch("type") === "habit" && (
+              <div>
+                <label className="block text-sm font-medium text-gray-700">Habit</label>
+                <select {...register("habit")} className="w-full p-2 border rounded-md text-black">
+                  <option value="">Select a Habit</option>
+                  <option value="Reading">Reading</option>
+                  <option value="Exercise">Exercise</option>
+                  <option value="Meditation">Meditation</option>
+                </select>
+                {errors.habit && <p className="text-red-600 text-sm">{errors.habit.message}</p>}
+              </div>
+            )}
+            <button
+              type="submit"
+              className="w-full py-2 px-4 bg-blue-600 text-white rounded-md hover:bg-blue-700"
+            >
+              {selectedNode ? "Update Node" : "Save Node"}
+            </button>
+          </form>
+
+          <button
+            onClick={() => addNewNode()}
+            className="w-full mt-4 py-2 px-4 bg-gray-600 text-white rounded-md hover:bg-gray-700"
+          >
+            Add New Node
+          </button>
+        </div>
+      </div>
+    </ReactFlowProvider>
   );
 }
